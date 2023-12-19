@@ -140,14 +140,67 @@ print("Part 1:", answer_1)
 
 # Can't solve part 2 in straightforward way, because seed range is too large, takes too long!
 
-# Considered working backwards:
-# - Pick smallest location number (start at 0)
-# - Work through sequence in reverse to find corresponding seed number
-# - If seed number is in our given listing, then we're done! The location number we started with is the answer
-# - If the seed number doesn't land in our listing, increment the location by 1 and repeat the process
-#   -> This still takes too long!!!
+# Make more compact version of range mapping, with format: x1,x2,dst -> src_start, src_end, dst_start
+section_x1x2dst_lut = {}
+for section_key, map_listing in range_map_per_section_lut.items():
+    section_x1x2dst_lut[section_key] = sorted([(d["src_start"], d["src_end"], d["dst_start"]) for d in map_listing])
 
+# Add 'zero' and 'max' listings, if not already included in mappings, since these may be missing
+# -> Assume that all interior ranges are present (seems to be true for given data)
+max_end = 2**32 - 1
+extra_lut = {}
+for section_key, x1x2ds_listings in section_x1x2dst_lut.items():
+    new_listing = []
+    # Add zero listing
+    min_x1 = x1x2ds_listings[0][0]
+    needs_zero_entry = min_x1 > 0
+    if needs_zero_entry: new_listing.append((0, min_x1 - 1, 0))
+    
+    # Add max listing
+    max_x2 = x1x2ds_listings[-1][1]
+    needs_max_entry = max_x2 < max_end
+    if needs_max_entry: new_listing.append((max_x2 + 1, max_end, max_x2 + 1))
+    extra_lut[section_key] = new_listing
 
-answer_2 = None
+# Add zero/max listings into main lut (couldn't add inside of loop)
+for section_key, extra_listing in extra_lut.items():
+    section_x1x2dst_lut[section_key].extend(extra_listing)
+    section_x1x2dst_lut[section_key] = sorted(section_x1x2dst_lut[section_key])
+
+# Build initial set of start/end points to check
+x1x2_list = [(x1, x1+delta-1) for x1, delta in zip(seed_nums_list[::2], seed_nums_list[1::2])]
+
+# Approach
+# - Have starting list of x1x2 pairs (i.e. given seed numbers)
+# - Check x1x2 overlap with all 'next src' start/end mappings
+#   -> make new x1x2 list based on overlapping segments
+# - With new x1x2 list, map forward using dst mapping
+# -> Repeat process, using new dst mapping as the starting x1x2 list
+src_dst_pairs_list = list(zip(search_seq[:-1], search_seq[1:]))
+for section_key in src_dst_pairs_list:
+    
+    # Make new x1x2 based on overlap with src ranges
+    new_src_x1x2_list = []
+    new_dst_x1x2_list = []
+    for src_x1, src_x2, dst_x1 in section_x1x2dst_lut[section_key]:
+        
+        for x1, x2 in x1x2_list:
+            
+            # Check for bounds overlapping
+            if (x1 <= src_x2) and (x2 >= src_x1):
+                new_src_x1 = max(x1, src_x1)
+                new_src_x2 = min(x2, src_x2)
+                new_src_x1x2_list.append((new_src_x1, new_src_x2))
+                
+                # Map forward using dst
+                new_dst_x1 = dst_x1 + (new_src_x1 - src_x1)
+                new_dst_x2 = dst_x1 + (new_src_x2 - src_x1)
+                new_dst_x1x2_list.append((new_dst_x1, new_dst_x2))
+    
+    # Use dst of this loop as next input
+    x1x2_list = new_dst_x1x2_list
+
+# Answer is smallest dst start after final (humidity-location) mapping
+answer_2 = sorted(x1x2_list)[0][0]
 print("Part 2:", answer_2)
 
